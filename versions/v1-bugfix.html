@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BITS Pilani Digital – Advanced Grading Console</title>
+<!-- FIX #16: pinned library version so a future release can't silently break the app -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<style>
+/* ===== BASE ===== */
+body{
+  margin:0;
+  font-family:Segoe UI, Arial, sans-serif;
+  background:#f5f3ff;
+  color:#111827;
+}
+.container{
+  max-width:1100px;
+  margin:auto;
+  padding:16px;
+}
+header{
+  background:#ffffff;
+  border-radius:10px;
+  padding:14px 18px;
+  box-shadow:0 2px 10px rgba(0,0,0,.06);
+  margin-bottom:12px;
+}
+header h1{
+  margin:0;
+  font-size:20px;
+  color:#312e81;
+}
+header h2{
+  margin:2px 0 0;
+  font-size:14px;
+  font-weight:500;
+  color:#5b3cc4;
+}
+
+/* ===== CONTROLS ===== */
+.controls{
+  display:grid;
+  grid-template-columns:1.2fr 1fr 1fr;
+  gap:12px;
+  margin-bottom:6px;
+}
+input,select{
+  padding:8px 10px;
+  border-radius:6px;
+  border:1px solid #d1d5db;
+}
+
+.file-guidance{
+  grid-column:2 / 3;
+  margin-top:4px;
+  padding:8px 10px;
+  font-size:12px;
+  color:#4b5563;
+  background:#f9fafb;
+  border-radius:6px;
+}
+.file-guidance summary{
+  cursor:pointer;
+  font-weight:500;
+  color:#312e81;
+}
+.file-guidance p{
+  margin:6px 0 0;
+  line-height:1.5;
+}
+
+button{
+  padding:10px 16px;
+  border:none;
+  border-radius:6px;
+  background:#5b3cc4;
+  color:#fff;
+  font-weight:500;
+  cursor:pointer;
+  transition:transform .2s ease, opacity .2s ease;
+}
+button.secondary{
+  background:#e5e7eb;
+  color:#111827;
+}
+button:disabled{
+  opacity:.4;
+  cursor:not-allowed;
+}
+
+.workspace{
+  display:grid;
+  grid-template-columns:420px 1fr;
+  gap:14px;
+}
+
+.panel{
+  background:#ffffff;
+  border-radius:12px;
+  padding:12px;
+  box-shadow:0 4px 14px rgba(0,0,0,.08);
+}
+
+.stats{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:6px;
+  margin-top:8px;
+}
+.stat{
+  background:#f8fafc;
+  border-radius:6px;
+  padding:6px;
+  font-size:12px;
+  text-align:center;
+}
+
+.grade-summary{
+  margin-top:8px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  font-size:12px;
+}
+.grade-summary span{
+  background:#ede9fe;
+  padding:4px 8px;
+  border-radius:999px;
+  transition:transform .25s ease, background-color .25s ease;
+}
+.grade-summary span.ungraded{
+  background:#fee2e2;
+  color:#b91c1c;
+  font-weight:600;
+}
+
+.grade-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:10px;
+}
+.grade{
+  border:1px solid #e5e7eb;
+  border-radius:8px;
+  padding:8px;
+  background:#fafafa;
+  transition:transform .25s ease, box-shadow .25s ease;
+}
+.min select{background:#fff7ed}
+.max select{background:#eff6ff}
+
+.error{
+  color:#b91c1c;
+  font-size:13px;
+  margin-top:8px;
+}
+.notice{
+  margin-top:10px;
+  font-size:13px;
+  color:#065f46;
+}
+.file-status{
+  font-size:13px;
+  margin:4px 0 0;
+  line-height:1.5;
+}
+.file-status.ok{color:#065f46}
+.file-status.warn{color:#92400e}
+.file-status.bad{color:#b91c1c}
+
+.actions{
+  display:flex;
+  gap:10px;
+  margin-top:10px;
+  align-items:center;
+}
+
+/* ===== ANIMATIONS ===== */
+.grade.lift{
+  transform:translateY(-2px);
+  box-shadow:0 8px 20px rgba(0,0,0,.12);
+}
+button.enabled{
+  transform:scale(1.03);
+}
+.grade-summary span.pulse{
+  transform:scale(1.08);
+  background:#ddd6fe;
+}
+
+/* ===== TIMER CLOCK ===== */
+.timer-wrapper{
+  margin-top:14px;
+  display:flex;
+  justify-content:center;
+}
+.timer-clock{
+  width:90px;
+  height:90px;
+  position:relative;
+}
+.timer-clock svg{
+  transform:rotate(-90deg);
+}
+.timer-text{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:600;
+  font-size:14px;
+  color:#5b3cc4;
+}
+
+/* FIX #15: removed the second reduced-motion block that re-applied the movement */
+@media (prefers-reduced-motion: reduce){
+  *{animation:none!important;transition:none!important;}
+  .grade.lift, button.enabled, .grade-summary span.pulse{transform:none;}
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<header>
+  <h1>BITS Pilani Digital</h1>
+  <h2>Advanced Grading Console</h2>
+</header>
+
+<div class="controls">
+  <input id="instructor" placeholder="Instructor name (mandatory)">
+  <!-- FIX #3: accept .xlsx (the format the brief asks for) as well as .xls -->
+  <input type="file" id="file" accept=".xlsx,.xls">
+  <select id="course"><option value="">Select a course to begin</option></select>
+
+  <details class="file-guidance">
+    <summary>Marks file format guidance</summary>
+    <p>
+      The uploaded Excel file (.xlsx or .xls) should contain exactly three columns:
+      <b>BITS ID</b>, <b>Course</b>, and <b>Total Marks</b>.
+    </p>
+    <p>
+      Total Marks should be whole numbers from 0 to 100. Fractional values
+      are rounded to the nearest integer (for example, 80.4 → 80 and 80.5 → 81).
+    </p>
+    <p>
+      Students who did not appear for the trimester-end examination and are
+      to be awarded an <b>NC</b> grade should not be included in the file.
+    </p>
+    <p>
+      This console is intended for grading only those students who appeared
+      for the examination.
+    </p>
+  </details>
+</div>
+
+<div id="fileStatus" class="file-status" role="status"></div>
+<div id="welcome" class="notice"></div>
+
+<div class="workspace">
+  <!-- ANALYTICS -->
+  <div class="panel">
+    <canvas id="hist" width="380" height="240" aria-label="Marks distribution histogram"></canvas>
+
+    <!-- FIX #4: Min label now shows the min value and Max shows the max value -->
+    <div class="stats">
+      <div class="stat">Min<br><b id="min">–</b></div>
+      <div class="stat">Max<br><b id="max">–</b></div>
+      <div class="stat">Avg<br><b id="avg">–</b></div>
+      <div class="stat">Median<br><b id="med">–</b></div>
+    </div>
+
+    <div class="grade-summary" id="gradeSummary"></div>
+  </div>
+
+  <!-- GRADING -->
+  <div class="panel">
+    <div class="grade-grid" id="grades"></div>
+    <div class="error" id="rangeError"></div>
+
+    <div class="actions">
+      <button class="secondary" id="resetRanges" disabled>Reset Range</button>
+      <button id="download" disabled>Finalize & Download</button>
+    </div>
+    <div class="error" id="exportError"></div>
+
+    <div class="timer-wrapper">
+      <div class="timer-clock">
+        <svg width="90" height="90">
+          <circle cx="45" cy="45" r="40" stroke="#ede9fe" stroke-width="6" fill="none"/>
+          <circle id="timerArc" cx="45" cy="45" r="40"
+            stroke="#5b3cc4" stroke-width="6" fill="none"
+            stroke-linecap="round"
+            stroke-dasharray="251.33"
+            stroke-dashoffset="251.33"/>
+        </svg>
+        <div class="timer-text" id="timerText">00:00</div>
+      </div>
+    </div>
+
+    <div id="thankyou" class="notice"></div>
+  </div>
+</div>
+
+</div>
+
+<script>
+/* ===== ELEMENTS ===== */
+const el = id => document.getElementById(id);
+const instructorEl = el("instructor"), fileEl = el("file"), courseEl = el("course");
+const fileStatusEl = el("fileStatus"), welcomeEl = el("welcome");
+const histEl = el("hist"), gradesEl = el("grades"), gradeSummaryEl = el("gradeSummary");
+const rangeErrorEl = el("rangeError"), exportErrorEl = el("exportError");
+const resetBtn = el("resetRanges"), downloadBtn = el("download"), thankyouEl = el("thankyou");
+
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ===== TIMER =====
+   FIX #2: the clock now starts when grading starts (course selected),
+   not when the page loads, and paints 00:00 straight away instead of
+   waiting one second for the first tick. */
+let gradingStartTime = null;
+let timerInterval = null;
+const circumference = 2 * Math.PI * 40;
+
+function renderTimer(){
+  const elapsed = gradingStartTime ? Date.now() - gradingStartTime : 0;
+  const min = Math.floor(elapsed/60000);
+  const sec = Math.floor((elapsed%60000)/1000);
+  el("timerText").innerText =
+    String(min).padStart(2,"0")+":"+String(sec).padStart(2,"0");
+  const progress = Math.min(elapsed/3600000,1);
+  el("timerArc").style.strokeDashoffset = circumference * (1-progress);
+}
+function startTimer(fresh){
+  if(fresh) gradingStartTime = Date.now();
+  clearInterval(timerInterval);
+  renderTimer();                                 // paint immediately
+  timerInterval = setInterval(renderTimer,1000);
+}
+function stopTimer(){
+  clearInterval(timerInterval);
+  timerInterval = null;
+}
+function resetTimer(){
+  stopTimer();
+  gradingStartTime = null;
+  renderTimer();
+}
+el("timerArc").style.strokeDasharray = circumference;
+
+/* ===== GRADE CONFIG ===== */
+const GRADES=["A","A-","B","B-","C","C-","D","E"];
+const DEFAULTS={
+  "A":[80,100],"A-":[70,79],"B":[60,69],"B-":[50,59],
+  "C":[40,49],"C-":[30,39],"D":[20,29],"E":[0,19]
+};
+
+let data=[];
+let previousSummary={};
+let finalizeCount = 0;
+let histAnimId = null;
+
+/* ===== HELPERS ===== */
+function courseMarks(){
+  return data.filter(d=>d.Course===courseEl.value).map(d=>d["Total Marks"]);
+}
+function getRange(g){
+  return { min:+el(g+"min").value, max:+el(g+"max").value };
+}
+function gradeFor(mark){
+  for(const g of GRADES){
+    const r=getRange(g);
+    if(mark>=r.min && mark<=r.max) return g;
+  }
+  return null;
+}
+function setFileStatus(msg, kind){
+  fileStatusEl.textContent = msg;
+  fileStatusEl.className = "file-status" + (kind ? " " + kind : "");
+}
+
+/* ===== FILE UPLOAD =====
+   FIX #1: course list is rebuilt from scratch on every upload and each course appears once.
+   FIX #5: fractional marks are rounded on upload, so a mark like 79.5 can't fall
+           between two grade ranges and vanish from the results.
+   FIX #19: rows are checked (columns present, marks numeric and 0–100, duplicate IDs
+            flagged) instead of being trusted blindly.
+   FIX #6: cancelling the file picker no longer throws an error. */
+function resetCourseOptions(){
+  courseEl.length = 1;          // keep only the placeholder
+  courseEl.value = "";
+}
+
+function parseRows(rows){
+  if(!rows.length) return { error:"The file has no student rows." };
+
+  // Match headers even if they have extra spaces or different capitalisation
+  const headerMap = {};
+  Object.keys(rows[0]).forEach(k=>{ headerMap[k.trim().toLowerCase()] = k; });
+  const need = { "bits id":"BITS ID", "course":"Course", "total marks":"Total Marks" };
+  const missing = Object.keys(need).filter(k=>!(k in headerMap)).map(k=>need[k]);
+  if(missing.length){
+    return { error:`Missing column(s): ${missing.join(", ")}. The file needs BITS ID, Course and Total Marks.` };
+  }
+
+  const clean=[], incomplete=[], badMarks=[], duplicates=[];
+  let rounded=0;
+  const seen=new Set();
+
+  rows.forEach((row,i)=>{
+    const excelRow = i+2;       // row 1 is the header
+    const id = String(row[headerMap["bits id"]] ?? "").trim();
+    const c  = String(row[headerMap["course"]] ?? "").trim();
+    const rawMark = String(row[headerMap["total marks"]] ?? "").trim();
+
+    if(!id || !c || rawMark===""){ incomplete.push(excelRow); return; }
+
+    const n = Number(rawMark);
+    if(!Number.isFinite(n) || n<0 || n>100){ badMarks.push(excelRow); return; }
+
+    const key = c+"||"+id;
+    if(seen.has(key)){ duplicates.push(`${id} (row ${excelRow})`); return; }
+    seen.add(key);
+
+    const mark = Math.round(n);
+    if(mark!==n) rounded++;
+    clean.push({ "BITS ID":id, "Course":c, "Total Marks":mark });
+  });
+
+  if(!clean.length) return { error:"No valid student rows were found in this file." };
+  return { rows:clean, incomplete, badMarks, duplicates, rounded };
+}
+
+fileEl.onchange=e=>{
+  const f=e.target.files[0];
+  data=[];
+  resetCourseOptions();
+  clearWorkspace();
+  setFileStatus("");
+  if(!f) return;                                   // user cancelled the picker
+
+  const r=new FileReader();
+  r.onerror=()=>setFileStatus("Could not read this file. Please try again.","bad");
+  r.onload=ev=>{
+    let rows;
+    try{
+      const wb=XLSX.read(new Uint8Array(ev.target.result),{type:"array"});
+      rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
+    }catch(err){
+      setFileStatus("This doesn't look like a valid Excel file. Please upload a .xlsx or .xls file.","bad");
+      return;
+    }
+
+    const res=parseRows(rows);
+    if(res.error){ setFileStatus(res.error,"bad"); return; }
+    data=res.rows;
+
+    const courses=[...new Set(data.map(d=>d.Course))].sort();
+    courses.forEach(c=>courseEl.add(new Option(c,c)));
+
+    const notes=[];
+    if(res.incomplete.length) notes.push(`${res.incomplete.length} row(s) skipped for missing values (rows ${res.incomplete.slice(0,5).join(", ")}${res.incomplete.length>5?"…":""})`);
+    if(res.badMarks.length)   notes.push(`${res.badMarks.length} row(s) skipped because marks were not a number between 0 and 100 (rows ${res.badMarks.slice(0,5).join(", ")}${res.badMarks.length>5?"…":""})`);
+    if(res.duplicates.length) notes.push(`${res.duplicates.length} duplicate BITS ID(s) skipped: ${res.duplicates.slice(0,5).join(", ")}${res.duplicates.length>5?"…":""}`);
+    if(res.rounded)           notes.push(`${res.rounded} fractional mark(s) rounded to the nearest whole number`);
+
+    const summary=`Loaded ${data.length} student(s) across ${courses.length} course(s).`;
+    setFileStatus(notes.length ? summary+" Please check: "+notes.join("; ")+"." : summary, notes.length?"warn":"ok");
+  };
+  r.readAsArrayBuffer(f);
+};
+
+/* ===== COURSE SELECTION =====
+   FIX #9: choosing the placeholder again clears the screen instead of showing undefined values.
+   FIX #2: each course is its own grading session, so timer and attempt count restart. */
+function clearWorkspace(){
+  if(histAnimId) cancelAnimationFrame(histAnimId);
+  histEl.getContext("2d").clearRect(0,0,histEl.width,histEl.height);
+  gradesEl.innerHTML="";
+  gradeSummaryEl.innerHTML="";
+  ["min","max","avg","med"].forEach(id=>el(id).textContent="–");
+  rangeErrorEl.textContent="";
+  exportErrorEl.textContent="";
+  welcomeEl.textContent="";
+  thankyouEl.textContent="";
+  downloadBtn.disabled=true;
+  downloadBtn.classList.remove("enabled");
+  resetBtn.disabled=true;
+  previousSummary={};
+  finalizeCount=0;
+  resetTimer();
+}
+
+courseEl.onchange=()=>{
+  if(!courseEl.value){ clearWorkspace(); return; }
+  if(!instructorEl.value.trim()){
+    alert("Please enter instructor name first");
+    courseEl.value="";
+    instructorEl.focus();
+    return;
+  }
+  clearWorkspace();
+  welcomeEl.innerText=`Welcome ${instructorEl.value.trim().toUpperCase()}. Please review and finalize grading.`;
+  buildGradeUI();
+  resetBtn.disabled=false;
+  startTimer(true);
+  updateAll();
+};
+
+/* ===== GRADE RANGE UI =====
+   FIX #8: cascading stops at 0 instead of writing -1 (a value the dropdown doesn't have). */
+function cascadeMaxFrom(index){
+  for(let i=index+1;i<GRADES.length;i++){
+    const prevMin=+el(GRADES[i-1]+"min").value;
+    if(prevMin-1<0) break;       // no room below; validation will explain
+    el(GRADES[i]+"max").value=prevMin-1;
+  }
+}
+
+function flash(node, cls){
+  // FIX #14: keep the class long enough (250ms) for the CSS transition to be seen
+  node.classList.add(cls);
+  setTimeout(()=>node.classList.remove(cls),250);
+}
+
+function onRangeEdited(){
+  // After a download, editing ranges again means grading resumed, so resume the clock.
+  if(gradingStartTime && !timerInterval) startTimer(false);
+  exportErrorEl.textContent="";
+  updateAll();
+}
+
+function buildGradeUI(){
+  gradesEl.innerHTML="";
+  GRADES.forEach((g,idx)=>{
+    const card=document.createElement("div");
+    card.className="grade";
+
+    const minSel=document.createElement("select");
+    const maxSel=document.createElement("select");
+
+    for(let i=0;i<=100;i++){
+      minSel.add(new Option(i,i,i===DEFAULTS[g][0],i===DEFAULTS[g][0]));
+      maxSel.add(new Option(i,i,i===DEFAULTS[g][1],i===DEFAULTS[g][1]));
+    }
+
+    minSel.id=g+"min";
+    maxSel.id=g+"max";
+    minSel.setAttribute("aria-label",`${g} minimum mark`);
+    maxSel.setAttribute("aria-label",`${g} maximum mark`);
+
+    minSel.onchange=()=>{
+      flash(card,"lift");
+      cascadeMaxFrom(idx);
+      onRangeEdited();
+    };
+    maxSel.onchange=()=>{
+      flash(card,"lift");
+      onRangeEdited();
+    };
+
+    card.innerHTML=`<strong>${g}</strong><div class="min">Min </div>`;
+    card.querySelector(".min").appendChild(minSel);
+
+    const maxDiv=document.createElement("div");
+    maxDiv.className="max";
+    maxDiv.innerText="Max ";
+    maxDiv.appendChild(maxSel);
+    card.appendChild(maxDiv);
+
+    gradesEl.appendChild(card);
+  });
+}
+
+// FIX #13: one confirmation is enough
+resetBtn.onclick=()=>{
+  if(!confirm("Reset all grade ranges to the default values?")) return;
+  GRADES.forEach(g=>{
+    el(g+"min").value=DEFAULTS[g][0];
+    el(g+"max").value=DEFAULTS[g][1];
+  });
+  onRangeEdited();
+};
+
+/* ===== VALIDATION =====
+   FIX #7: ranges must cover the full 0–100 scale (A ends at 100, E starts at 0),
+           otherwise students at the edges silently get no grade.
+   Messages now name the grade that has the problem. */
+function validateRanges(){
+  for(let i=0;i<GRADES.length;i++){
+    const g=GRADES[i];
+    const { min:minV, max:maxV }=getRange(g);
+    if(minV>maxV) return `${g}: Min (${minV}) cannot be higher than Max (${maxV}).`;
+    if(i===0 && maxV!==100) return `${g} must go up to 100, otherwise students above ${maxV} get no grade.`;
+    if(i>0){
+      const prev=GRADES[i-1];
+      const prevMin=getRange(prev).min;
+      if(prevMin===0) return `${prev} starts at 0, so there is no room left for ${g} and the grades below it.`;
+      if(maxV!==prevMin-1) return `${g} Max should be ${prevMin-1} so it joins up with ${prev} (which starts at ${prevMin}). Ranges must have no gaps or overlaps.`;
+    }
+    if(i===GRADES.length-1 && minV!==0) return `${g} must start at 0, otherwise students below ${minV} get no grade.`;
+  }
+  return "";
+}
+
+function updateAll(){
+  const err=validateRanges();
+  rangeErrorEl.innerText=err;
+  downloadBtn.disabled=!!err;
+  downloadBtn.classList.toggle("enabled",!err);
+  drawHistogram();
+  computeStats();
+  computeGradeSummary();
+}
+
+/* ===== HISTOGRAM =====
+   FIX #11: bars are scaled to fit the canvas, the bell curve lines up with the bars and
+   is scaled to the same student counts, it isn't drawn when every mark is identical
+   (std = 0 → divide by zero), and a new draw cancels any animation still running. */
+function drawHistogram(){
+  const ctx=histEl.getContext("2d");
+  if(histAnimId) cancelAnimationFrame(histAnimId);
+  ctx.clearRect(0,0,histEl.width,histEl.height);
+
+  const marks=courseMarks();
+  if(!marks.length) return;
+
+  const bins=Array(10).fill(0);
+  marks.forEach(m=>bins[Math.min(9,Math.floor(m/10))]++);
+
+  const n=marks.length;
+  const mean=marks.reduce((a,b)=>a+b,0)/n;
+  const std=Math.sqrt(marks.reduce((a,b)=>a+(b-mean)**2,0)/n);
+  const pdf=x=>(1/(std*Math.sqrt(2*Math.PI)))*Math.exp(-0.5*((x-mean)/std)**2);
+
+  const LEFT=30, SLOT=32, BASE=210, TOP_ROOM=175;
+  let peak=Math.max(...bins);
+  if(std>0) peak=Math.max(peak, n*10*pdf(mean));   // expected students per 10-mark bin
+  const scale=TOP_ROOM/peak;
+
+  function frame(p){
+    ctx.clearRect(0,0,histEl.width,histEl.height);
+    ctx.textAlign="center";
+    ctx.font="10px Arial";
+    bins.forEach((v,i)=>{
+      const h=v*scale*p;
+      const x=LEFT+i*SLOT+2;
+      ctx.fillStyle="#5b3cc4";
+      ctx.fillRect(x,BASE-h,SLOT-4,h);
+      ctx.fillStyle="#111827";
+      ctx.fillText(`${i*10}-${i===9?100:i*10+9}`,x+(SLOT-4)/2,228);
+      if(v && p===1) ctx.fillText(v,x+(SLOT-4)/2,BASE-h-4);
+    });
+
+    if(std>0){
+      ctx.strokeStyle="#dc2626";
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      const maxX=Math.floor(100*p);
+      for(let x=0;x<=maxX;x++){
+        const px=LEFT+(x/10)*SLOT;
+        const py=BASE-n*10*pdf(x)*scale;
+        x===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+      }
+      ctx.stroke();
+    }
+  }
+
+  if(reduceMotion){ frame(1); return; }
+  let start=null;
+  function animate(ts){
+    if(!start) start=ts;
+    const p=Math.min((ts-start)/400,1);
+    frame(p);
+    if(p<1) histAnimId=requestAnimationFrame(animate);
+  }
+  histAnimId=requestAnimationFrame(animate);
+}
+
+/* ===== STATS =====
+   FIX #9: no students → show "–" instead of undefined / NaN.
+   FIX #10: marks are numbers (converted on upload), so the average adds instead of joining text. */
+function computeStats(){
+  const m=courseMarks().sort((a,b)=>a-b);
+  if(!m.length){
+    ["min","max","avg","med"].forEach(id=>el(id).textContent="–");
+    return;
+  }
+  el("min").textContent=m[0];
+  el("max").textContent=m[m.length-1];
+  el("avg").textContent=(m.reduce((a,b)=>a+b,0)/m.length).toFixed(2);
+  el("med").textContent=m.length%2?m[Math.floor(m.length/2)]
+    :(m[m.length/2-1]+m[m.length/2])/2;
+}
+
+function computeGradeSummary(){
+  const counts={}; GRADES.forEach(g=>counts[g]=0);
+  let ungraded=0;
+  courseMarks().forEach(mark=>{
+    const g=gradeFor(mark);
+    g ? counts[g]++ : ungraded++;
+  });
+  gradeSummaryEl.innerHTML="";
+  GRADES.forEach(g=>{
+    const span=document.createElement("span");
+    span.textContent=`${g}: ${counts[g]}`;
+    if(previousSummary[g]!==undefined && previousSummary[g]!==counts[g]) flash(span,"pulse");
+    gradeSummaryEl.appendChild(span);
+    previousSummary[g]=counts[g];
+  });
+  // Make it visible when some students are not covered by any range
+  if(ungraded){
+    const span=document.createElement("span");
+    span.className="ungraded";
+    span.textContent=`No grade: ${ungraded}`;
+    gradeSummaryEl.appendChild(span);
+  }
+}
+
+/* ===== EXPORT =====
+   FIX #12: CSV values are escaped (commas / quotes in names no longer break columns,
+            and cells can't be read as spreadsheet formulas), the stray space is gone,
+            and the file name includes the course.
+   FIX #17: instructor name is checked again at export time.
+   FIX #18: attempt wording is correct for every number (21st, 22nd, 23rd …). */
+function csvCell(v){
+  let s=String(v ?? "");
+  if(/^[=+\-@]/.test(s)) s="'"+s;
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+}
+function ordinal(n){
+  if(n===2) return "second";
+  if(n===3) return "third";
+  const s=["th","st","nd","rd"], v=n%100;
+  return n+(s[(v-20)%10]||s[v]||s[0]);
+}
+
+downloadBtn.onclick=()=>{
+  exportErrorEl.textContent="";
+  const name=instructorEl.value.trim();
+  if(!name){
+    exportErrorEl.textContent="Please enter the instructor name before downloading.";
+    instructorEl.focus();
+    return;
+  }
+  if(validateRanges()) return;
+
+  const rows=data.filter(d=>d.Course===courseEl.value);
+  const lines=[
+    `Instructor,${csvCell(name)}`,
+    `Course,${csvCell(courseEl.value)}`,
+    ``,
+    `BITS ID,Total Marks,Grade`
+  ];
+  const missed=[];
+  rows.forEach(d=>{
+    const g=gradeFor(d["Total Marks"]);
+    if(!g){ missed.push(d["BITS ID"]); return; }
+    lines.push([d["BITS ID"],d["Total Marks"],g].map(csvCell).join(","));
+  });
+  if(missed.length){
+    exportErrorEl.textContent=`${missed.length} student(s) don't fall in any grade range, so nothing was downloaded. Please fix the ranges first.`;
+    return;
+  }
+
+  finalizeCount++;
+  stopTimer();
+  const elapsed = Date.now() - gradingStartTime;
+  const minT=Math.floor(elapsed/60000);
+  const secT=Math.floor((elapsed%60000)/1000);
+
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([lines.join("\n")+"\n"],{type:"text/csv"}));
+  a.download=`grades_${courseEl.value.replace(/[^\w\-]+/g,"_")}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+
+  if(finalizeCount === 1){
+    thankyouEl.innerText =
+      `You completed grading in ${minT} min ${secT} sec in your first attempt.`;
+  } else {
+    thankyouEl.innerText =
+      `You took a total of ${minT} min ${secT} sec to complete the grading in your ${ordinal(finalizeCount)} attempt.`;
+  }
+};
+
+renderTimer();
+</script>
+</body>
+</html>
