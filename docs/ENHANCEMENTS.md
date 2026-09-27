@@ -22,5 +22,3 @@ I asked one question: *what slows an instructor down, or makes them nervous, whe
 - A layout that works on a phone with no sideways scrolling.
 - Keyboard focus outlines, labelled inputs, and reduced-motion support.
 - The grade colours are one violet shade that gets lighter from A to E, checked for colour-blind readability. Grade names are always shown next to the colour, so meaning never relies on colour alone.
-
-**What I deliberately left out:** extra charts, themes and animations. They would add screen space without solving any grading problem.
