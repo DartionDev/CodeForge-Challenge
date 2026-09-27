@@ -82,18 +82,4 @@ Input file format: first sheet, three columns `BITS ID`, `Course`, `Total Marks`
 
 A single HTML file with plain JavaScript, a canvas chart, and [SheetJS](https://sheetjs.com/) `xlsx@0.18.5` (pinned) for reading and writing Excel. There's no build step and no server. Everything runs in the browser, and marks never leave the instructor's machine. Autosave uses the browser's `localStorage` only.
 
-## Deploying to GitHub Pages
-
-1. Create a new **public** repository on GitHub (e.g. `bits-codeforge-grading-console`). Don't add a README.
-2. From this folder:
-   ```bash
-   git remote add origin https://github.com/YOUR-USERNAME/bits-codeforge-grading-console.git
-   git branch -M main
-   git push -u origin main
-   ```
-3. On GitHub: **Settings → Pages → Build and deployment → Source: Deploy from a branch → Branch: `main` / `(root)` → Save**.
-4. After about a minute the site is live at `https://YOUR-USERNAME.github.io/bits-codeforge-grading-console/`. Put that link at the top of this README.
-
-## Author
-
-Darshan Joshi · built with help from AI tools (as the challenge allows). Every change was tested against the Excel files in `test-files/`.
+· built with help from AI tools - Claude for restructuring and reframing the content (as the challenge allows). Every change was tested against the Excel files in `test-files/`.
