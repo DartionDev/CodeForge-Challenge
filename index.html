@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BITS Pilani Digital – Advanced Grading Console</title>
+<meta name="description" content="Upload marks, set grade cutoffs, review borderline students and export final grades.">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<style>
+:root{
+  --bg:#f5f3ff;
+  --surface:#ffffff;
+  --surface-2:#f8f7ff;
+  --line:#e5e7eb;
+  --ink:#111827;
+  --ink-2:#4b5563;
+  --ink-3:#6b7280;
+  --brand:#5b3cc4;
+  --brand-ink:#312e81;
+  --brand-soft:#ede9fe;
+  --ok:#065f46;
+  --warn:#92400e;
+  --warn-bg:#fef3c7;
+  --bad:#b91c1c;
+  --bad-bg:#fee2e2;
+  --curve:#dc2626;
+  /* Grade ramp: one violet hue, dark (A) → light (E). Validated as an ordinal ramp. */
+  --g-A:#27145c; --g-Am:#391f7f; --g-B:#4c2ba3; --g-Bm:#5e3fc0;
+  --g-C:#7156d8; --g-Cm:#8470e5; --g-D:#988cec; --g-E:#ada6f3;
+  --radius:12px;
+  --shadow:0 4px 14px rgba(17,24,39,.07);
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;
+  background:var(--bg);
+  color:var(--ink);
+  font-size:14px;
+}
+.container{max-width:1180px;margin:auto;padding:16px}
+button,input,select{font:inherit}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+
+/* ===== HEADER ===== */
+header{
+  background:var(--surface);
+  border-radius:10px;
+  padding:14px 18px;
+  box-shadow:0 2px 10px rgba(0,0,0,.06);
+  margin-bottom:12px;
+  display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
+}
+header h1{margin:0;font-size:20px;color:var(--brand-ink)}
+header h2{margin:2px 0 0;font-size:14px;font-weight:500;color:var(--brand)}
+.steps{display:flex;gap:6px;font-size:12px;color:var(--ink-3);flex-wrap:wrap}
+.steps span{padding:4px 10px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line)}
+.steps span.done{background:var(--brand-soft);color:var(--brand-ink);border-color:transparent}
+.steps span.now{background:var(--brand);color:#fff;border-color:transparent}
+
+/* ===== SETUP ===== */
+.controls{
+  display:grid;
+  grid-template-columns:1.2fr 1fr 1fr;
+  gap:12px;
+}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin:0 0 4px}
+.field input,.field select{width:100%}
+input,select{
+  padding:8px 10px;border-radius:6px;border:1px solid #d1d5db;background:#fff;color:var(--ink);
+}
+.field-error{color:var(--bad);font-size:12px;margin-top:4px;min-height:0}
+.file-guidance{
+  margin-top:6px;padding:8px 10px;font-size:12px;color:var(--ink-2);
+  background:#f9fafb;border-radius:6px;
+}
+.file-guidance summary{cursor:pointer;font-weight:500;color:var(--brand-ink)}
+.file-guidance p{margin:6px 0 0;line-height:1.5}
+.linklike{background:none;border:none;padding:0;color:var(--brand);text-decoration:underline;cursor:pointer;font-weight:500}
+.file-status{font-size:13px;margin:8px 0 0;line-height:1.5}
+.file-status.ok{color:var(--ok)}
+.file-status.warn{color:var(--warn)}
+.file-status.bad{color:var(--bad)}
+.notice{margin:10px 0 0;font-size:13px;color:var(--ok)}
+.draft-note{
+  margin:8px 0 0;font-size:13px;padding:8px 12px;border-radius:8px;
+  background:var(--brand-soft);color:var(--brand-ink);display:none;gap:10px;align-items:center;flex-wrap:wrap
+}
+.draft-note.show{display:flex}
+
+/* ===== BUTTONS ===== */
+button{
+  padding:10px 16px;border:none;border-radius:6px;background:var(--brand);color:#fff;
+  font-weight:500;cursor:pointer;transition:transform .2s ease,opacity .2s ease,background-color .2s;
+}
+button:hover:not(:disabled){background:#4c2ba3}
+button.secondary{background:#e5e7eb;color:var(--ink)}
+button.secondary:hover:not(:disabled){background:#d1d5db}
+button.small{padding:5px 10px;font-size:12px}
+button:disabled{opacity:.4;cursor:not-allowed}
+
+/* ===== WORKSPACE ===== */
+.workspace{display:grid;grid-template-columns:1.25fr 1fr;gap:14px;margin-top:12px}
+.panel{background:var(--surface);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);min-width:0}
+.panel h3{margin:0 0 2px;font-size:15px;color:var(--brand-ink)}
+.panel .hint{margin:0 0 10px;font-size:12px;color:var(--ink-3)}
+.empty{padding:36px 10px;text-align:center;color:var(--ink-3);font-size:13px}
+
+/* chart */
+.chart-wrap{position:relative;width:100%}
+#hist{display:block;width:100%;height:270px;touch-action:none}
+.tooltip{
+  position:absolute;pointer-events:none;background:#111827;color:#fff;font-size:12px;
+  padding:6px 8px;border-radius:6px;white-space:nowrap;transform:translate(-50%,-110%);display:none;z-index:2
+}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--ink-2);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.legend .curve{width:16px;height:2px;background:var(--curve);border-radius:0;vertical-align:3px}
+.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:10px}
+.stat{background:var(--surface-2);border-radius:6px;padding:6px;font-size:12px;text-align:center;color:var(--ink-2)}
+.stat b{display:block;color:var(--ink);font-size:14px;margin-top:2px}
+
+/* cutoff table */
+table{width:100%;border-collapse:collapse}
+.cuts th{font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--ink-3);text-align:left;padding:4px 6px;font-weight:600}
+.cuts td{padding:5px 6px;border-top:1px solid var(--line);vertical-align:middle}
+.cuts td.num,.cuts th.num{text-align:right;font-variant-numeric:tabular-nums}
+.cuts td[id^="range-"]{white-space:nowrap}
+.gname{font-weight:700;white-space:nowrap}
+.sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.cuts input{width:70px;padding:6px 8px}
+.cuts input.invalid{border-color:var(--bad);background:var(--bad-bg)}
+.cuts .fixed{display:inline-block;width:70px;padding:6px 8px;color:var(--ink-3)}
+.cuts .rowerr td{border-top:none;padding-top:0;color:var(--bad);font-size:12px}
+.cuts tr.lift td{background:var(--surface-2)}
+.count{transition:background-color .25s ease;border-radius:4px;padding:1px 4px}
+.count.pulse{background:#ddd6fe}
+.error{color:var(--bad);font-size:13px;margin-top:8px}
+.actions{display:flex;gap:10px;margin-top:12px;align-items:center;flex-wrap:wrap}
+.autosave{font-size:12px;color:var(--ink-3);margin-left:auto}
+button.enabled{transform:scale(1.03)}
+
+/* timer */
+.timer-row{display:flex;align-items:center;gap:12px;margin-top:12px}
+.timer-clock{width:64px;height:64px;position:relative;flex:none}
+.timer-clock svg{transform:rotate(-90deg)}
+.timer-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;color:var(--brand)}
+.timer-label{font-size:12px;color:var(--ink-3)}
+
+/* review panel */
+.review{margin-top:14px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:10px}
+.tabs button{background:none;color:var(--ink-2);border-radius:6px 6px 0 0;padding:8px 14px;border-bottom:2px solid transparent}
+.tabs button:hover:not(:disabled){background:var(--surface-2)}
+.tabs button[aria-selected="true"]{color:var(--brand-ink);border-bottom-color:var(--brand);font-weight:600}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:13px;color:var(--ink-2)}
+.toolbar input[type=search]{min-width:220px;flex:1;max-width:320px}
+.bl-group{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.bl-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.bl-head b{color:var(--brand-ink)}
+.bl-list{display:flex;flex-wrap:wrap;gap:6px}
+.bl-item{background:var(--surface-2);border-radius:6px;padding:4px 8px;font-size:12px;font-variant-numeric:tabular-nums}
+.bl-item em{font-style:normal;color:var(--warn);font-weight:600}
+.scroll{max-height:380px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.students th{position:sticky;top:0;background:var(--surface-2);font-size:12px;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+.students th button{background:none;color:var(--ink-2);padding:0;font-weight:600;font-size:12px}
+.students th button:hover{background:none;color:var(--brand)}
+.students td{padding:7px 10px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.students tr:last-child td{border-bottom:none}
+.gap-near{color:var(--warn);font-weight:600}
+
+/* dialog */
+dialog{border:none;border-radius:14px;padding:0;max-width:640px;width:calc(100% - 32px);box-shadow:0 20px 60px rgba(0,0,0,.25)}
+dialog::backdrop{background:rgba(17,24,39,.45)}
+.dlg-body{padding:18px 20px;max-height:70vh;overflow:auto}
+.dlg-body h3{margin:0 0 4px;color:var(--brand-ink)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px;margin:10px 0}
+.kv dt{color:var(--ink-3)}
+.kv dd{margin:0;font-weight:500}
+.dlg-table td,.dlg-table th{padding:5px 8px;border-bottom:1px solid var(--line);font-size:13px;text-align:left}
+.dlg-table .num{text-align:right;font-variant-numeric:tabular-nums}
+.callout{border-radius:8px;padding:8px 10px;font-size:13px;margin-top:10px}
+.callout.warn{background:var(--warn-bg);color:var(--warn)}
+.callout.info{background:var(--brand-soft);color:var(--brand-ink)}
+.formats{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:13px}
+.dlg-foot{display:flex;justify-content:flex-end;gap:10px;padding:12px 20px;border-top:1px solid var(--line);background:var(--surface-2)}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width:960px){
+  .workspace{grid-template-columns:1fr}
+}
+@media (max-width:700px){
+  .controls{grid-template-columns:1fr}
+  .stats{grid-template-columns:repeat(3,1fr)}
+  .steps{display:none}
+  .toolbar input[type=search]{min-width:0;max-width:none;width:100%}
+}
+
+@media (prefers-reduced-motion: reduce){
+  *{animation:none!important;transition:none!important}
+  button.enabled{transform:none}
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<header>
+  <div>
+    <h1>BITS Pilani Digital</h1>
+    <h2>Advanced Grading Console</h2>
+  </div>
+  <nav class="steps" aria-label="Progress">
+    <span id="step1" class="now">1 · Upload marks</span>
+    <span id="step2">2 · Set cutoffs</span>
+    <span id="step3">3 · Review</span>
+    <span id="step4">4 · Export</span>
+  </nav>
+</header>
+
+<section class="panel" aria-label="Setup">
+  <div class="controls">
+    <div class="field">
+      <label for="instructor">Instructor name</label>
+      <input id="instructor" placeholder="e.g. Prof. R. Sharma" autocomplete="name">
+      <div class="field-error" id="instructorError"></div>
+    </div>
+    <div class="field">
+      <label for="file">Marks file (.xlsx / .xls)</label>
+      <input type="file" id="file" accept=".xlsx,.xls">
+      <details class="file-guidance">
+        <summary>Marks file format guidance</summary>
+        <p>The first sheet should contain three columns:
+          <b>BITS ID</b>, <b>Course</b>, and <b>Total Marks</b> (0–100).
+          <button type="button" class="linklike" id="templateBtn">Download a blank template</button></p>
+        <p>Fractional marks are rounded to the nearest whole number (80.4 → 80, 80.5 → 81).</p>
+        <p>Students who did not appear for the trimester-end examination and are to be awarded an
+          <b>NC</b> grade should not be included in the file.</p>
+      </details>
+    </div>
+    <div class="field">
+      <label for="course">Course</label>
+      <select id="course" disabled><option value="">Upload a file first</option></select>
+    </div>
+  </div>
+  <div id="fileStatus" class="file-status" role="status" aria-live="polite"></div>
+  <div id="welcome" class="notice"></div>
+  <div id="draftNote" class="draft-note" role="status">
+    <span id="draftText"></span>
+    <button type="button" class="small secondary" id="discardDraft">Start from defaults</button>
+  </div>
+</section>
+
+<div class="workspace">
+  <!-- ANALYTICS -->
+  <section class="panel" aria-labelledby="distTitle">
+    <h3 id="distTitle">Marks distribution</h3>
+    <p class="hint">Each bar is one mark (0–100), coloured by the grade it currently gets. Drag the dashed cutoff lines to move a boundary.</p>
+    <div id="chartEmpty" class="empty">Upload a marks file and pick a course to see the distribution.</div>
+    <div class="chart-wrap" id="chartWrap" hidden>
+      <canvas id="hist" role="img" aria-label="Histogram of marks coloured by grade"></canvas>
+      <div class="tooltip" id="tip"></div>
+    </div>
+    <div class="legend" id="legend" hidden></div>
+    <div class="stats" id="stats" hidden>
+      <div class="stat">Students<b id="sN">–</b></div>
+      <div class="stat">Min<b id="min">–</b></div>
+      <div class="stat">Max<b id="max">–</b></div>
+      <div class="stat">Avg<b id="avg">–</b></div>
+      <div class="stat">Median<b id="med">–</b></div>
+      <div class="stat">Std dev<b id="sd">–</b></div>
+    </div>
+  </section>
+
+  <!-- CUTOFFS -->
+  <section class="panel" aria-labelledby="cutTitle">
+    <h3 id="cutTitle">Grade cutoffs</h3>
+    <p class="hint">Enter the lowest mark for each grade. Upper limits fill in automatically, so ranges can never have gaps or overlaps.</p>
+    <div id="cutEmpty" class="empty">Cutoffs appear once a course is selected.</div>
+    <table class="cuts" id="cutTable" hidden>
+      <thead><tr><th>Grade</th><th>From</th><th>Range</th><th class="num">Students</th><th class="num">%</th></tr></thead>
+      <tbody id="cutBody"></tbody>
+    </table>
+    <div class="error" id="rangeError" role="alert"></div>
+
+    <div class="actions">
+      <button class="secondary" id="resetRanges" disabled>Reset to defaults</button>
+      <button id="finalize" disabled>Review &amp; Export</button>
+      <span class="autosave" id="autosave" aria-live="polite"></span>
+    </div>
+
+    <div class="timer-row">
+      <div class="timer-clock">
+        <svg width="64" height="64" aria-hidden="true">
+          <circle cx="32" cy="32" r="28" stroke="#ede9fe" stroke-width="5" fill="none"/>
+          <circle id="timerArc" cx="32" cy="32" r="28" stroke="#5b3cc4" stroke-width="5" fill="none" stroke-linecap="round"/>
+        </svg>
+        <div class="timer-text" id="timerText">00:00</div>
+      </div>
+      <div>
+        <div class="timer-label">Time spent grading this course</div>
+        <div id="thankyou" class="notice" style="margin-top:4px"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- REVIEW -->
+<section class="panel review" aria-labelledby="reviewTitle">
+  <h3 id="reviewTitle">Review students</h3>
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tabBorder" aria-selected="true" aria-controls="paneBorder">Borderline <span id="blCount"></span></button>
+    <button role="tab" id="tabAll" aria-selected="false" aria-controls="paneAll">All students <span id="allCount"></span></button>
+  </div>
+
+  <div id="paneBorder" role="tabpanel" aria-labelledby="tabBorder">
+    <div class="toolbar">
+      <label for="blWindow">Show students within</label>
+      <select id="blWindow">
+        <option value="1">1 mark</option>
+        <option value="2" selected>2 marks</option>
+        <option value="3">3 marks</option>
+        <option value="5">5 marks</option>
+      </select>
+      <span>of the next grade up.</span>
+    </div>
+    <div id="blBody"><div class="empty">Borderline students appear once a course is selected.</div></div>
+  </div>
+
+  <div id="paneAll" role="tabpanel" aria-labelledby="tabAll" hidden>
+    <div class="toolbar">
+      <input type="search" id="search" placeholder="Search BITS ID…" aria-label="Search by BITS ID">
+      <label for="gradeFilter">Grade</label>
+      <select id="gradeFilter"><option value="">All grades</option></select>
+      <span id="showing"></span>
+    </div>
+    <div class="scroll">
+      <table class="students">
+        <thead><tr>
+          <th><button data-sort="id">BITS ID</button></th>
+          <th><button data-sort="mark">Marks</button></th>
+          <th><button data-sort="grade">Grade</button></th>
+          <th>To next grade</th>
+        </tr></thead>
+        <tbody id="stuBody"><tr><td colspan="4" class="empty">No course selected.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<!-- REVIEW BEFORE EXPORT -->
+<dialog id="reviewDlg" aria-labelledby="dlgTitle">
+  <form method="dialog">
+    <div class="dlg-body" id="dlgBody"></div>
+    <div class="dlg-foot">
+      <button value="cancel" class="secondary" formnovalidate>Back to editing</button>
+      <button value="export" id="dlgExport">Download</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+/* ============================================================
+   CONFIG
+   ============================================================ */
+const GRADES=["A","A-","B","B-","C","C-","D","E"];
+const DEFAULT_CUTS={"A":80,"A-":70,"B":60,"B-":50,"C":40,"C-":30,"D":20,"E":0};
+const COLORS={"A":"#27145c","A-":"#391f7f","B":"#4c2ba3","B-":"#5e3fc0","C":"#7156d8","C-":"#8470e5","D":"#988cec","E":"#ada6f3"};
+const STORE="gradingConsole:v1:";
+const reduceMotion=window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const el=id=>document.getElementById(id);
+const instructorEl=el("instructor"), fileEl=el("file"), courseEl=el("course");
+
+/* ============================================================
+   STATE
+   ============================================================ */
+let data=[];                 // [{ "BITS ID", Course, "Total Marks" }]
+let fileName="";
+let cuts={...DEFAULT_CUTS};
+let cutsValid=true;
+let finalizeCount=0;
+let prevCounts={};
+let histAnimId=null;
+let tableSort={key:"mark",dir:"desc"};
+
+/* ============================================================
+   SMALL HELPERS
+   ============================================================ */
+function store(key,val){ try{ val===undefined?localStorage.removeItem(STORE+key):localStorage.setItem(STORE+key,JSON.stringify(val)); return true; }catch(e){ return false; } }
+function load(key){ try{ const v=localStorage.getItem(STORE+key); return v?JSON.parse(v):null; }catch(e){ return null; } }
+function esc(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function fmtTime(ts){ return new Date(ts).toLocaleString(undefined,{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}); }
+function safeName(s){ return s.replace(/[^\w\-]+/g,"_"); }
+function setStep(n){ for(let i=1;i<=4;i++){ const s=el("step"+i); s.className=i<n?"done":i===n?"now":""; } }
+
+function rangeOf(g,c=cuts){
+  const i=GRADES.indexOf(g);
+  return { min:c[g], max: i===0 ? 100 : c[GRADES[i-1]]-1 };
+}
+function gradeFor(mark,c=cuts){
+  for(const g of GRADES) if(mark>=c[g]) return g;
+  return "E";
+}
+function courseRows(){ return data.filter(d=>d.Course===courseEl.value); }
+function statsOf(m){
+  if(!m.length) return null;
+  const s=[...m].sort((a,b)=>a-b), n=s.length;
+  const mean=s.reduce((a,b)=>a+b,0)/n;
+  const sd=Math.sqrt(s.reduce((a,b)=>a+(b-mean)**2,0)/n);
+  const med=n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2;
+  return { n, min:s[0], max:s[n-1], mean, med, sd };
+}
+function flash(node,cls,ms=250){ node.classList.add(cls); setTimeout(()=>node.classList.remove(cls),ms); }
+
+/* ============================================================
+   TIMER  (starts when a course is picked; pauses on export)
+   ============================================================ */
+let gradingStartTime=null, timerInterval=null;
+const R=28, circumference=2*Math.PI*R;
+el("timerArc").style.strokeDasharray=circumference;
+function elapsedMs(){ return gradingStartTime?Date.now()-gradingStartTime:0; }
+function renderTimer(){
+  const e=elapsedMs(), m=Math.floor(e/60000), s=Math.floor((e%60000)/1000);
+  el("timerText").textContent=String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");
+  el("timerArc").style.strokeDashoffset=circumference*(1-Math.min(e/3600000,1));
+}
+function startTimer(fresh){ if(fresh) gradingStartTime=Date.now(); clearInterval(timerInterval); renderTimer(); timerInterval=setInterval(renderTimer,1000); }
+function stopTimer(){ clearInterval(timerInterval); timerInterval=null; }
+function resetTimer(){ stopTimer(); gradingStartTime=null; renderTimer(); }
+
+/* ============================================================
+   FILE UPLOAD + VALIDATION
+   ============================================================ */
+function setFileStatus(msg,kind){ const s=el("fileStatus"); s.textContent=msg; s.className="file-status"+(kind?" "+kind:""); }
+
+function parseRows(rows){
+  if(!rows.length) return { error:"The file has no student rows." };
+  const headerMap={};
+  Object.keys(rows[0]).forEach(k=>{ headerMap[k.trim().toLowerCase()]=k; });
+  const need={"bits id":"BITS ID","course":"Course","total marks":"Total Marks"};
+  const missing=Object.keys(need).filter(k=>!(k in headerMap)).map(k=>need[k]);
+  if(missing.length) return { error:`Missing column(s): ${missing.join(", ")}. The file needs BITS ID, Course and Total Marks.` };
+
+  const clean=[], incomplete=[], badMarks=[], duplicates=[]; let rounded=0; const seen=new Set();
+  rows.forEach((row,i)=>{
+    const r=i+2;
+    const id=String(row[headerMap["bits id"]]??"").trim();
+    const c=String(row[headerMap["course"]]??"").trim();
+    const raw=String(row[headerMap["total marks"]]??"").trim();
+    if(!id||!c||raw===""){ incomplete.push(r); return; }
+    const n=Number(raw);
+    if(!Number.isFinite(n)||n<0||n>100){ badMarks.push(r); return; }
+    const key=c+"||"+id;
+    if(seen.has(key)){ duplicates.push(`${id} (row ${r})`); return; }
+    seen.add(key);
+    const mark=Math.round(n); if(mark!==n) rounded++;
+    clean.push({"BITS ID":id,"Course":c,"Total Marks":mark});
+  });
+  if(!clean.length) return { error:"No valid student rows were found in this file." };
+  return { rows:clean, incomplete, badMarks, duplicates, rounded };
+}
+
+function list(a){ return a.slice(0,5).join(", ")+(a.length>5?"…":""); }
+
+fileEl.onchange=e=>{
+  const f=e.target.files[0];
+  data=[]; fileName="";
+  courseEl.length=0; courseEl.add(new Option("Upload a file first","")); courseEl.disabled=true;
+  clearWorkspace(); setFileStatus(""); setStep(1);
+  if(!f) return;
+
+  const r=new FileReader();
+  r.onerror=()=>setFileStatus("Could not read this file. Please try again.","bad");
+  r.onload=ev=>{
+    let rows;
+    try{
+      const wb=XLSX.read(new Uint8Array(ev.target.result),{type:"array"});
+      rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
+    }catch(err){ setFileStatus("This doesn't look like a valid Excel file. Please upload a .xlsx or .xls file.","bad"); return; }
+    const res=parseRows(rows);
+    if(res.error){ setFileStatus(res.error,"bad"); return; }
+    data=res.rows; fileName=f.name;
+
+    const courses=[...new Set(data.map(d=>d.Course))].sort();
+    courseEl.length=0; courseEl.add(new Option("Select a course to begin",""));
+    courses.forEach(c=>{
+      const n=data.filter(d=>d.Course===c).length;
+      courseEl.add(new Option(`${c} (${n} students)`,c));
+    });
+    courseEl.disabled=false;
+
+    const notes=[];
+    if(res.incomplete.length) notes.push(`${res.incomplete.length} row(s) skipped for missing values (rows ${list(res.incomplete)})`);
+    if(res.badMarks.length)   notes.push(`${res.badMarks.length} row(s) skipped because marks were not a number between 0 and 100 (rows ${list(res.badMarks)})`);
+    if(res.duplicates.length) notes.push(`${res.duplicates.length} duplicate BITS ID(s) skipped: ${list(res.duplicates)}`);
+    if(res.rounded)           notes.push(`${res.rounded} fractional mark(s) rounded to the nearest whole number`);
+    const summary=`Loaded ${data.length} student(s) across ${courses.length} course(s).`;
+    setFileStatus(notes.length?summary+" Please check: "+notes.join("; ")+".":summary, notes.length?"warn":"ok");
+    setStep(2);
+  };
+  r.readAsArrayBuffer(f);
+};
+
+el("templateBtn").onclick=()=>{
+  const ws=XLSX.utils.aoa_to_sheet([["BITS ID","Course","Total Marks"],["2024A7PS001P","MATH F111",82],["2024A7PS002P","MATH F111",71]]);
+  ws["!cols"]=[{wch:16},{wch:20},{wch:12}];
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Marks");
+  XLSX.writeFile(wb,"marks_template.xlsx");
+};
+
+/* ============================================================
+   INSTRUCTOR (remembered in this browser)
+   ============================================================ */
+instructorEl.value=load("instructor")||"";
+instructorEl.addEventListener("input",()=>{
+  store("instructor",instructorEl.value.trim());
+  if(instructorEl.value.trim()) el("instructorError").textContent="";
+  if(courseEl.value) setWelcome();
+});
+function setWelcome(){ el("welcome").textContent=`Welcome ${instructorEl.value.trim()}. Please review and finalize grading for ${courseEl.value}.`; }
+
+/* ============================================================
+   COURSE SELECTION
+   ============================================================ */
+function clearWorkspace(){
+  if(histAnimId) cancelAnimationFrame(histAnimId);
+  el("chartWrap").hidden=true; el("legend").hidden=true; el("stats").hidden=true; el("chartEmpty").hidden=false;
+  el("cutTable").hidden=true; el("cutEmpty").hidden=false; el("cutBody").innerHTML="";
+  el("rangeError").textContent=""; el("welcome").textContent=""; el("thankyou").textContent="";
+  el("draftNote").classList.remove("show"); el("autosave").textContent="";
+  el("finalize").disabled=true; el("finalize").classList.remove("enabled"); el("resetRanges").disabled=true;
+  el("blBody").innerHTML='<div class="empty">Borderline students appear once a course is selected.</div>';
+  el("stuBody").innerHTML='<tr><td colspan="4" class="empty">No course selected.</td></tr>';
+  el("blCount").textContent=""; el("allCount").textContent=""; el("showing").textContent="";
+  cuts={...DEFAULT_CUTS}; cutsValid=true; prevCounts={}; finalizeCount=0;
+  renderStats();
+  resetTimer();
+}
+
+courseEl.onchange=()=>{
+  if(!courseEl.value){ clearWorkspace(); setStep(data.length?2:1); return; }
+  if(!instructorEl.value.trim()){
+    el("instructorError").textContent="Please enter your name first. It goes on the exported file.";
+    courseEl.value=""; instructorEl.focus(); return;
+  }
+  clearWorkspace();
+  setWelcome();
+
+  // Autosave: restore this course's draft cutoffs if we have them
+  const draft=load("draft:"+courseEl.value);
+  if(draft && draft.cuts && GRADES.every(g=>Number.isInteger(draft.cuts[g]))){
+    cuts={...draft.cuts};
+    const exported=draft.exportedAt?` Last exported ${fmtTime(draft.exportedAt)}.`:"";
+    el("draftText").textContent=`Restored your saved cutoffs for ${courseEl.value} (saved ${fmtTime(draft.savedAt)}).${exported}`;
+    el("draftNote").classList.add("show");
+  }
+
+  buildCutTable();
+  el("chartWrap").hidden=false; el("legend").hidden=false; el("stats").hidden=false; el("chartEmpty").hidden=true;
+  el("cutTable").hidden=false; el("cutEmpty").hidden=true; el("resetRanges").disabled=false;
+  buildLegend(); renderStats(); fillGradeFilter(); setStep(2);
+  startTimer(true);
+  refresh({animate:true, save:false});
+};
+
+el("discardDraft").onclick=()=>{
+  store("draft:"+courseEl.value,undefined);
+  el("draftNote").classList.remove("show");
+  applyCuts({...DEFAULT_CUTS});
+};
+
+/* ============================================================
+   CUTOFF TABLE  (enhancement: edit only the lower cutoff)
+   ============================================================ */
+function buildCutTable(){
+  const body=el("cutBody"); body.innerHTML="";
+  GRADES.forEach((g,i)=>{
+    const tr=document.createElement("tr"); tr.id="row-"+g;
+    const fromCell = g==="E"
+      ? `<span class="fixed" title="E always starts at 0">0</span>`
+      : `<input type="number" id="cut-${g}" min="1" max="100" step="1" inputmode="numeric" aria-label="Lowest mark for ${g}" value="${cuts[g]}">`;
+    tr.innerHTML=`<td class="gname"><span class="sw" style="background:${COLORS[g]}"></span>${g}</td>
+      <td>${fromCell}</td>
+      <td id="range-${g}"></td>
+      <td class="num"><span class="count" id="cnt-${g}">0</span></td>
+      <td class="num" id="pct-${g}"></td>`;
+    body.appendChild(tr);
+    const err=document.createElement("tr"); err.className="rowerr"; err.hidden=true; err.id="err-"+g;
+    err.innerHTML=`<td></td><td colspan="4"></td>`;
+    body.appendChild(err);
+    if(g!=="E"){
+      const inp=tr.querySelector("input");
+      inp.addEventListener("input",()=>{ flash(tr,"lift"); readCutInputs(); });
+    }
+  });
+}
+
+function readCutInputs(){
+  const next={...cuts};
+  GRADES.forEach(g=>{ if(g!=="E"){ const v=el("cut-"+g).value.trim(); next[g]= v===""?NaN:Number(v); } });
+  next.E=0;
+  cuts=next;
+  onCutsChanged();
+}
+
+function applyCuts(c){
+  cuts={...c};
+  GRADES.forEach(g=>{ if(g!=="E") el("cut-"+g).value=cuts[g]; });
+  onCutsChanged();
+}
+
+function validateCuts(){
+  const errors={};
+  GRADES.forEach((g,i)=>{
+    if(g==="E") return;
+    const v=cuts[g];
+    if(Number.isNaN(v)) errors[g]="Enter the lowest mark for this grade.";
+    else if(!Number.isInteger(v)) errors[g]="Use a whole number.";
+    else if(v<1||v>100) errors[g]="Must be between 1 and 100.";
+  });
+  GRADES.forEach((g,i)=>{
+    if(g==="E"||errors[g]) return;
+    const below=GRADES[i+1];
+    if(!errors[below] && cuts[g]<=cuts[below])
+      errors[g]=`Must be higher than ${below}'s cutoff (${cuts[below]}), otherwise ${below} gets no marks.`;
+  });
+  return errors;
+}
+
+function onCutsChanged(){
+  if(gradingStartTime && !timerInterval) startTimer(false);   // resumed editing after an export
+  refresh({animate:false, save:true});
+}
+
+/* ============================================================
+   REFRESH EVERYTHING
+   ============================================================ */
+function refresh({animate,save}){
+  const errors=validateCuts();
+  cutsValid=!Object.keys(errors).length;
+
+  GRADES.forEach(g=>{
+    const e=el("err-"+g), inp=el("cut-"+g);
+    if(errors[g]){ e.hidden=false; e.children[1].textContent=errors[g]; inp&&inp.classList.add("invalid"); inp&&inp.setAttribute("aria-invalid","true"); }
+    else{ e.hidden=true; inp&&inp.classList.remove("invalid"); inp&&inp.removeAttribute("aria-invalid"); }
+  });
+  el("rangeError").textContent=cutsValid?"":"Fix the highlighted cutoffs to continue. Charts use the last valid values.";
+  el("finalize").disabled=!cutsValid;
+  el("finalize").classList.toggle("enabled",cutsValid);
+
+  if(cutsValid){
+    lastValid={...cuts};
+    if(save){
+      const prev=load("draft:"+courseEl.value)||{};
+      const ok=store("draft:"+courseEl.value,{cuts,savedAt:Date.now(),exportedAt:prev.exportedAt||null});
+      el("autosave").textContent= ok?`Draft saved · ${new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}`:"Autosave isn't available in this browser";
+      setStep(3);
+    }
+  }
+  const c=cutsValid?cuts:lastValid;
+  renderCounts(c);
+  drawHistogram(c,animate);
+  renderBorderline(c);
+  renderStudents(c);
+}
+let lastValid={...DEFAULT_CUTS};
+
+function renderCounts(c){
+  const rows=courseRows(), n=rows.length;
+  const counts={}; GRADES.forEach(g=>counts[g]=0);
+  rows.forEach(d=>counts[gradeFor(d["Total Marks"],c)]++);
+  GRADES.forEach(g=>{
+    const r=rangeOf(g,c);
+    el("range-"+g).textContent=r.min>r.max?"—":(r.min===r.max?`${r.min}`:`${r.min} – ${r.max}`);
+    const cnt=el("cnt-"+g);
+    cnt.textContent=counts[g];
+    if(prevCounts[g]!==undefined && prevCounts[g]!==counts[g]) flash(cnt,"pulse");
+    el("pct-"+g).textContent=n?Math.round(counts[g]/n*100)+"%":"";
+  });
+  prevCounts=counts;
+  return counts;
+}
+
+/* ============================================================
+   STATS
+   ============================================================ */
+function renderStats(){
+  const s=statsOf(courseRows().map(d=>d["Total Marks"]));
+  const set=(id,v)=>el(id).textContent=v;
+  if(!s){ ["sN","min","max","avg","med","sd"].forEach(id=>set(id,"–")); return; }
+  set("sN",s.n); set("min",s.min); set("max",s.max); set("avg",s.mean.toFixed(2)); set("med",s.med); set("sd",s.sd.toFixed(2));
+}
+
+function buildLegend(){
+  el("legend").innerHTML=GRADES.map(g=>`<span><i style="background:${COLORS[g]}"></i>${g}</span>`).join("")
+    +`<span><i class="curve"></i>Normal curve (same mean and spread)</span>`;
+}
+
+/* ============================================================
+   HISTOGRAM  (enhancement: colour by grade, cutoff lines, drag, hover)
+   ============================================================ */
+const hist=el("hist"), tip=el("tip");
+const PAD={l:34,r:10,t:22,b:26};
+let geom=null;          // last drawn geometry for hit-testing
+let dragGrade=null;
+
+function drawHistogram(c,animate){
+  if(histAnimId) cancelAnimationFrame(histAnimId);
+  const marks=courseRows().map(d=>d["Total Marks"]);
+  if(!marks.length) return;
+
+  const dpr=window.devicePixelRatio||1;
+  const W=hist.clientWidth||380, H=270;
+  if(hist.width!==Math.round(W*dpr)||hist.height!==Math.round(H*dpr)){ hist.width=Math.round(W*dpr); hist.height=Math.round(H*dpr); }
+  const ctx=hist.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0);
+
+  const counts=Array(101).fill(0); marks.forEach(m=>counts[m]++);
+  const s=statsOf(marks);
+  const pdf=x=>(1/(s.sd*Math.sqrt(2*Math.PI)))*Math.exp(-0.5*((x-s.mean)/s.sd)**2);
+  let peak=Math.max(...counts);
+  if(s.sd>0) peak=Math.max(peak,s.n*pdf(s.mean));
+  const step=peak<=5?1:peak<=10?2:peak<=25?5:peak<=50?10:Math.ceil(peak/50)*10;
+  const yMax=Math.ceil(peak/step)*step;
+
+  const plotW=W-PAD.l-PAD.r, plotH=H-PAD.t-PAD.b, bw=plotW/101, base=PAD.t+plotH;
+  const X=m=>PAD.l+m*bw, Y=v=>base-v/yMax*plotH;
+  geom={X,bw,W,H,counts,base,plotH};
+
+  function frame(p){
+    ctx.clearRect(0,0,W,H);
+    // grid + y labels
+    ctx.font="10px Segoe UI, Arial"; ctx.textAlign="right"; ctx.textBaseline="middle";
+    for(let v=0;v<=yMax;v+=step){
+      const y=Y(v); ctx.strokeStyle="#eef0f3"; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(PAD.l,y); ctx.lineTo(W-PAD.r,y); ctx.stroke();
+      ctx.fillStyle="#6b7280"; ctx.fillText(v,PAD.l-6,y);
+    }
+    // x labels
+    ctx.textAlign="center"; ctx.textBaseline="top";
+    for(let m=0;m<=100;m+=10){ ctx.fillText(m,X(m)+bw/2,base+6); }
+    // bars
+    for(let m=0;m<=100;m++){
+      if(!counts[m]) continue;
+      const h=counts[m]/yMax*plotH*p;
+      ctx.fillStyle=COLORS[gradeFor(m,c)];
+      const w=Math.max(1,bw-1);
+      ctx.fillRect(X(m)+(bw-w)/2,base-h,w,h);
+    }
+    // bell curve
+    if(s.sd>0){
+      ctx.strokeStyle="#dc2626"; ctx.lineWidth=2; ctx.beginPath();
+      const maxX=Math.floor(100*p);
+      for(let x=0;x<=maxX;x+=0.5){
+        const px=X(x)+bw/2, py=base-s.n*pdf(x)/yMax*plotH;
+        x===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+      }
+      ctx.stroke();
+    }
+    // cutoff lines + band labels
+    ctx.textBaseline="alphabetic";
+    GRADES.forEach((g,i)=>{
+      const r=rangeOf(g,c);
+      if(r.min<=r.max){
+        const mid=(X(r.min)+X(r.max+1))/2;
+        ctx.fillStyle="#374151"; ctx.font="600 11px Segoe UI, Arial"; ctx.textAlign="center";
+        if(X(r.max+1)-X(r.min)>=14) ctx.fillText(g,mid,PAD.t-7);
+      }
+      if(g==="E") return;
+      const x=Math.round(X(c[g]))+0.5;
+      ctx.strokeStyle=dragGrade===g?"#5b3cc4":"#6b7280"; ctx.lineWidth=dragGrade===g?2:1;
+      ctx.setLineDash([4,3]); ctx.beginPath(); ctx.moveTo(x,PAD.t-2); ctx.lineTo(x,base); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle=dragGrade===g?"#5b3cc4":"#6b7280";
+      ctx.beginPath(); ctx.arc(x,base,3.5,0,Math.PI*2); ctx.fill();
+    });
+    // baseline
+    ctx.strokeStyle="#9ca3af"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(PAD.l,base+0.5); ctx.lineTo(W-PAD.r,base+0.5); ctx.stroke();
+  }
+
+  if(!animate||reduceMotion){ frame(1); return; }
+  let start=null;
+  (function animateFrame(ts){
+    if(start===null) start=ts;
+    const p=Math.min((ts-start)/450,1);
+    frame(p);
+    if(p<1) histAnimId=requestAnimationFrame(animateFrame);
+  })(performance.now());
+}
+
+function pointerMark(e){
+  const rect=hist.getBoundingClientRect();
+  const x=e.clientX-rect.left, y=e.clientY-rect.top;
+  return {x,y,mark:Math.round((x-PAD.l)/geom.bw)};
+}
+function nearestLine(x){
+  let best=null, bestD=8;
+  GRADES.forEach(g=>{ if(g==="E") return; const d=Math.abs(geom.X(lastValid[g])-x); if(d<=bestD){ best=g; bestD=d; } });
+  return best;
+}
+hist.addEventListener("pointerdown",e=>{
+  if(!geom||!cutsValid) return;
+  const {x}=pointerMark(e); const g=nearestLine(x);
+  if(!g) return;
+  dragGrade=g; hist.setPointerCapture(e.pointerId); tip.style.display="none";
+  drawHistogram(cuts,false);
+});
+hist.addEventListener("pointermove",e=>{
+  if(!geom) return;
+  const {x,y}=pointerMark(e);
+  if(dragGrade){
+    const i=GRADES.indexOf(dragGrade);
+    const lo=cuts[GRADES[i+1]]+1, hi=i===0?100:cuts[GRADES[i-1]]-1;
+    let m=Math.round((x-PAD.l)/geom.bw); m=Math.max(lo,Math.min(hi,m));
+    if(m!==cuts[dragGrade]){ el("cut-"+dragGrade).value=m; readCutInputs(); flash(el("row-"+dragGrade),"lift"); }
+    return;
+  }
+  const g=nearestLine(x);
+  hist.style.cursor=g?"ew-resize":"default";
+  const m=Math.round((x-PAD.l-geom.bw/2)/geom.bw);
+  if(g){ tip.textContent=`${g} starts at ${lastValid[g]} · drag to move`; showTip(x,y); }
+  else if(m>=0&&m<=100&&y<geom.base){
+    const n=geom.counts[m];
+    tip.textContent=`Mark ${m} · ${n} student${n===1?"":"s"} · grade ${gradeFor(m,lastValid)}`; showTip(x,y);
+  } else tip.style.display="none";
+});
+function endDrag(){ if(dragGrade){ dragGrade=null; drawHistogram(lastValid,false); } }
+hist.addEventListener("pointerup",endDrag);
+hist.addEventListener("pointercancel",endDrag);
+hist.addEventListener("pointerleave",()=>{ tip.style.display="none"; });
+function showTip(x,y){ tip.style.left=x+"px"; tip.style.top=Math.max(y,40)+"px"; tip.style.display="block"; }
+
+let resizeTimer=null;
+window.addEventListener("resize",()=>{ clearTimeout(resizeTimer); resizeTimer=setTimeout(()=>{ if(courseEl.value) drawHistogram(lastValid,false); },120); });
+
+/* ============================================================
+   BORDERLINE STUDENTS  (enhancement)
+   ============================================================ */
+function renderBorderline(c){
+  const W=+el("blWindow").value;
+  const groups={};
+  courseRows().forEach(d=>{
+    const m=d["Total Marks"], g=gradeFor(m,c), gi=GRADES.indexOf(g);
+    if(gi===0) return;
+    const target=GRADES[gi-1], gap=c[target]-m;
+    if(gap<=W){ (groups[target]=groups[target]||[]).push({id:d["BITS ID"],m,gap}); }
+  });
+  const targets=GRADES.filter(g=>groups[g]);
+  const total=targets.reduce((a,g)=>a+groups[g].length,0);
+  el("blCount").textContent=`(${total})`;
+
+  if(!total){ el("blBody").innerHTML=`<div class="empty">No students are within ${W} mark${W>1?"s":""} of the next grade.</div>`; return; }
+
+  el("blBody").innerHTML=targets.map(t=>{
+    const ti=GRADES.indexOf(t), below=GRADES[ti+1];
+    const arr=groups[t].sort((a,b)=>b.m-a.m);
+    const lowest=Math.min(...arr.map(s=>s.m));
+    const canLower=lowest>c[below];
+    const btn=canLower
+      ? `<button type="button" class="small secondary" data-lower="${esc(t)}" data-to="${lowest}">Lower ${esc(t)} cutoff to ${lowest}</button>`
+      : `<span class="hint" style="margin:0">Can't lower to ${lowest}: ${esc(below)} starts there.</span>`;
+    return `<div class="bl-group">
+      <div class="bl-head"><div><b>${arr.length} student${arr.length>1?"s":""}</b> just below <b>${esc(t)}</b> (cutoff ${c[t]})</div>${btn}</div>
+      <div class="bl-list">${arr.map(s=>`<span class="bl-item">${esc(s.id)} · ${s.m} <em>+${s.gap}</em></span>`).join("")}</div>
+    </div>`;
+  }).join("");
+}
+el("blBody").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-lower]"); if(!b) return;
+  const next={...cuts}; next[b.dataset.lower]=+b.dataset.to;
+  applyCuts(next);
+  flash(el("row-"+b.dataset.lower),"lift",600);
+});
+el("blWindow").onchange=()=>{ if(courseEl.value) renderBorderline(lastValid); };
+
+/* ============================================================
+   STUDENT TABLE  (enhancement: search, filter, sort)
+   ============================================================ */
+function fillGradeFilter(){
+  const f=el("gradeFilter"); f.length=1; GRADES.forEach(g=>f.add(new Option(g,g)));
+}
+function renderStudents(c){
+  const q=el("search").value.trim().toLowerCase(), gf=el("gradeFilter").value;
+  const all=courseRows().map(d=>{
+    const m=d["Total Marks"], g=gradeFor(m,c), gi=GRADES.indexOf(g);
+    const gap=gi===0?null:c[GRADES[gi-1]]-m;
+    return {id:d["BITS ID"],m,g,gi,gap,next:gi===0?null:GRADES[gi-1]};
+  });
+  let rows=all.filter(r=>(!q||r.id.toLowerCase().includes(q))&&(!gf||r.g===gf));
+  const {key,dir}=tableSort, k=dir==="asc"?1:-1;
+  rows.sort((a,b)=>{
+    if(key==="id") return a.id.localeCompare(b.id)*k;
+    if(key==="grade") return (b.gi-a.gi)*k || (a.m-b.m)*k;
+    return (a.m-b.m)*k || a.id.localeCompare(b.id);
+  });
+  el("allCount").textContent=`(${all.length})`;
+  el("showing").textContent=`Showing ${rows.length} of ${all.length}`;
+  const W=+el("blWindow").value;
+  el("stuBody").innerHTML=rows.length?rows.map(r=>`<tr>
+      <td>${esc(r.id)}</td><td>${r.m}</td>
+      <td><span class="sw" style="background:${COLORS[r.g]}"></span>${esc(r.g)}</td>
+      <td class="${r.gap!==null&&r.gap<=W?"gap-near":""}">${r.gap===null?"—":`+${r.gap} for ${esc(r.next)}`}</td></tr>`).join("")
+    :'<tr><td colspan="4" class="empty">No students match.</td></tr>';
+  document.querySelectorAll(".students th button").forEach(b=>{
+    const on=b.dataset.sort===key;
+    b.textContent=b.textContent.replace(/ [▲▼]$/,"")+(on?(dir==="asc"?" ▲":" ▼"):"");
+    b.closest("th").setAttribute("aria-sort",on?(dir==="asc"?"ascending":"descending"):"none");
+  });
+}
+el("search").addEventListener("input",()=>courseEl.value&&renderStudents(lastValid));
+el("gradeFilter").onchange=()=>courseEl.value&&renderStudents(lastValid);
+document.querySelectorAll(".students th button").forEach(b=>b.onclick=()=>{
+  const k=b.dataset.sort;
+  tableSort = tableSort.key===k ? {key:k,dir:tableSort.dir==="asc"?"desc":"asc"} : {key:k,dir:k==="id"?"asc":"desc"};
+  if(courseEl.value) renderStudents(lastValid);
+});
+
+/* tabs */
+function selectTab(which){
+  const border=which==="border";
+  el("tabBorder").setAttribute("aria-selected",border); el("tabAll").setAttribute("aria-selected",!border);
+  el("paneBorder").hidden=!border; el("paneAll").hidden=border;
+}
+el("tabBorder").onclick=()=>{ selectTab("border"); if(courseEl.value) setStep(3); };
+el("tabAll").onclick=()=>{ selectTab("all"); if(courseEl.value) setStep(3); };
+
+/* ============================================================
+   RESET
+   ============================================================ */
+el("resetRanges").onclick=()=>{
+  if(!confirm("Reset all cutoffs to the default values?")) return;
+  applyCuts({...DEFAULT_CUTS});
+};
+
+/* ============================================================
+   REVIEW BEFORE EXPORT  (enhancement)
+   ============================================================ */
+function csvCell(v){
+  let s=String(v??"");
+  if(/^[=+\-@]/.test(s)) s="'"+s;
+  return /[",\n\r]/.test(s)?`"${s.replace(/"/g,'""')}"`:s;
+}
+function ordinal(n){
+  if(n===2) return "second"; if(n===3) return "third";
+  const s=["th","st","nd","rd"], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]);
+}
+function currentSnapshot(){
+  const rows=courseRows().map(d=>({id:d["BITS ID"],m:d["Total Marks"],g:gradeFor(d["Total Marks"])}));
+  const counts={}; GRADES.forEach(g=>counts[g]=0); rows.forEach(r=>counts[r.g]++);
+  const W=+el("blWindow").value;
+  const borderline=rows.filter(r=>{ const gi=GRADES.indexOf(r.g); return gi>0 && cuts[GRADES[gi-1]]-r.m<=W; }).length;
+  return { rows, counts, W, borderline, stats:statsOf(rows.map(r=>r.m)) };
+}
+
+el("finalize").onclick=()=>{
+  el("instructorError").textContent="";
+  if(!instructorEl.value.trim()){ el("instructorError").textContent="Please enter the instructor name before exporting."; instructorEl.focus(); return; }
+  if(!cutsValid) return;
+  const snap=currentSnapshot(), n=snap.rows.length;
+  const empty=GRADES.filter(g=>!snap.counts[g]);
+  const changed=GRADES.filter(g=>cuts[g]!==DEFAULT_CUTS[g]);
+  el("dlgBody").innerHTML=`
+    <h3 id="dlgTitle">Review before export</h3>
+    <dl class="kv">
+      <dt>Instructor</dt><dd>${esc(instructorEl.value.trim())}</dd>
+      <dt>Course</dt><dd>${esc(courseEl.value)}</dd>
+      <dt>Students</dt><dd>${n}</dd>
+      <dt>Class average</dt><dd>${snap.stats.mean.toFixed(2)} (median ${snap.stats.med})</dd>
+    </dl>
+    <table class="dlg-table">
+      <thead><tr><th>Grade</th><th>Range</th><th class="num">Students</th><th class="num">%</th></tr></thead>
+      <tbody>${GRADES.map(g=>{ const r=rangeOf(g); return `<tr><td><span class="sw" style="background:${COLORS[g]}"></span><b>${g}</b></td><td>${r.min===r.max?r.min:`${r.min} – ${r.max}`}${cuts[g]!==DEFAULT_CUTS[g]?' <span class="hint">(changed)</span>':""}</td><td class="num">${snap.counts[g]}</td><td class="num">${Math.round(snap.counts[g]/n*100)}%</td></tr>`; }).join("")}</tbody>
+    </table>
+    ${snap.borderline?`<div class="callout warn">${snap.borderline} student${snap.borderline>1?"s are":" is"} within ${snap.W} mark${snap.W>1?"s":""} of the next grade. Check the Borderline tab if you haven't already.</div>`:""}
+    ${empty.length?`<div class="callout info">No students in: ${empty.join(", ")}.</div>`:""}
+    <div class="callout info">${changed.length?`Cutoffs changed from defaults: ${changed.join(", ")}.`:"Using the default cutoffs."}</div>
+    <div class="formats" role="radiogroup" aria-label="File format">
+      <label><input type="radio" name="fmt" value="xlsx" checked> Excel (.xlsx) with audit sheet</label>
+      <label><input type="radio" name="fmt" value="csv"> CSV</label>
+    </div>`;
+  setStep(4);
+  el("reviewDlg").returnValue="";
+  el("reviewDlg").showModal();
+};
+
+el("reviewDlg").addEventListener("close",()=>{
+  if(el("reviewDlg").returnValue!=="export"){ setStep(3); return; }
+  const fmt=(el("dlgBody").querySelector('input[name="fmt"]:checked')||{}).value||"xlsx";
+  doExport(fmt);
+});
+
+function doExport(fmt){
+  const snap=currentSnapshot();
+  finalizeCount++;
+  stopTimer();
+  const e=elapsedMs(), minT=Math.floor(e/60000), secT=Math.floor((e%60000)/1000);
+  const name=instructorEl.value.trim(), course=courseEl.value;
+  const stamp=new Date(), base=`grades_${safeName(course)}`;
+
+  if(fmt==="csv"){
+    const lines=[`Instructor,${csvCell(name)}`,`Course,${csvCell(course)}`,``,`BITS ID,Total Marks,Grade`];
+    snap.rows.forEach(r=>lines.push([r.id,r.m,r.g].map(csvCell).join(",")));
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([lines.join("\n")+"\n"],{type:"text/csv"}));
+    a.download=base+".csv"; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  } else {
+    const wb=XLSX.utils.book_new();
+    const g=XLSX.utils.aoa_to_sheet([["BITS ID","Course","Total Marks","Grade"],...snap.rows.map(r=>[r.id,course,r.m,r.g])]);
+    g["!cols"]=[{wch:16},{wch:22},{wch:12},{wch:8}];
+    XLSX.utils.book_append_sheet(wb,g,"Grades");
+    const n=snap.rows.length, s=snap.stats;
+    const audit=[
+      ["Grading audit"],[],
+      ["Instructor",name],["Course",course],["Source file",fileName],
+      ["Exported at",stamp.toLocaleString()],["Students graded",n],
+      ["Export attempt",finalizeCount],["Time spent grading",`${minT} min ${secT} sec`],[],
+      ["Grade","Lowest mark","Highest mark","Students","% of class","Changed from default"],
+      ...GRADES.map(gr=>{ const r=rangeOf(gr); return [gr,r.min,r.max,snap.counts[gr],+(snap.counts[gr]/n*100).toFixed(1),cuts[gr]!==DEFAULT_CUTS[gr]?"Yes":"No"]; }),[],
+      ["Statistics"],["Min",s.min],["Max",s.max],["Average",+s.mean.toFixed(2)],["Median",s.med],["Std dev",+s.sd.toFixed(2)],[],
+      ["Borderline window",`${snap.W} mark(s)`],["Students within window",snap.borderline]
+    ];
+    const a=XLSX.utils.aoa_to_sheet(audit);
+    a["!cols"]=[{wch:22},{wch:26},{wch:13},{wch:10},{wch:11},{wch:20}];
+    XLSX.utils.book_append_sheet(wb,a,"Audit");
+    XLSX.writeFile(wb,base+".xlsx");
+  }
+
+  const draft=load("draft:"+course)||{};
+  store("draft:"+course,{cuts,savedAt:draft.savedAt||Date.now(),exportedAt:Date.now()});
+  el("autosave").textContent=`Exported · ${stamp.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}`;
+
+  el("thankyou").textContent = finalizeCount===1
+    ? `You completed grading in ${minT} min ${secT} sec in your first attempt.`
+    : `You took a total of ${minT} min ${secT} sec to complete the grading in your ${ordinal(finalizeCount)} attempt.`;
+}
+
+renderTimer();
+</script>
+</body>
+</html>
