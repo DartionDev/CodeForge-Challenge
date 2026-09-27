@@ -4,7 +4,7 @@ My submission for the BITS Digital CodeForge challenge: the sample grading conso
 
 > The original was a practice prototype created for this challenge. It is **not** an official BITS Pilani Digital tool and is not used for real academic grading.
 
-**Live app:** https://YOUR-USERNAME.github.io/YOUR-REPO/  ← *replace after deploying (see below)*
+**Live app:** : https://dartiondev.github.io/CodeForge-Challenge/
 
 ![Grading console](docs/screenshots/01-console.png)
 
